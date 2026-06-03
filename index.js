@@ -1,7 +1,9 @@
 import express from 'express';
 import cors from 'cors';
+import pg from 'pg';
 import { execSync } from 'child_process';
 
+const { Client } = pg;
 const PORT = 3000;
 
 const app = express();
@@ -15,8 +17,26 @@ const SYSTEM_PROMPT =
 	"If a command is potentially harmful, do not execute it and instead " +
 	"provide a safe response to the user.";
 
-app.post('/chat', (req, res) => {
+
+///////////////////////////////////// DATABASE CONNECTION ////////////////////////////////////////////////////
+
+const pgClientConfiguration = {
+	user: process.env.DB_USER,
+	host: process.env.DB_HOST,
+	database: process.env.DB_DATABASE,
+	password: process.env.DB_PASSWORD,
+	port: parseInt(process.env.DB_PORT, 10),
+};
+
+const dbClient = new Client(pgClientConfiguration);
+dbClient.connect();
+
+/////////////////////////////////////////// API /////////////////////////////////////////////////////////////
+
+app.post('/conversations/:id/chat', async (req, res) => {
 	const { input } = req.body;
+	const dbConversationId = "ef7fc115-90f8-4f4f-940d-24fb77bd62cf";
+	const dbGoogleUserId = "leeza";
 	console.log(`Executing chat for input:${input}`);
 
 	// sanitize input, replace double quotes with single quotes
@@ -31,8 +51,11 @@ app.post('/chat', (req, res) => {
 		{ encoding: "utf-8", timeout: 90000 }
 	).toString();
 
-	// Log Anti-Gravity response and send it back to the client.
-	console.log(`Gemini response: ${antiGravityResponse}`);
+	// Store input in the database
+	const queryText = "INSERT INTO chat_history (conversation_id, google_user_id, input_text, output_text) VALUES ($1, $2, $3, $4)";
+	const queryValues = [dbConversationId, dbGoogleUserId, input, antiGravityResponse];
+	await dbClient.query(queryText, queryValues);
+
 	res.json({ response: antiGravityResponse });
 });
 
