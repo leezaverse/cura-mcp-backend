@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import pg from 'pg';
-import { execSync } from 'child_process';
+import { execSync, execFileSync } from 'child_process';
 import dotenv from 'dotenv';
 
 const { Client } = pg;
@@ -12,16 +12,34 @@ app.use(express.json());
 app.use(cors());
 dotenv.config();
 
-const SYSTEM_PROMPT =
-	"Do not execute any commands that could cause harm to the system. " +
-	"Only execute commands that are necessary to answer the user's question. " +
-	"Always prioritize the safety and security of the system. " +
-	"If a command is potentially harmful, do not execute it and instead " +
-	"provide a safe response to the user." + 
-	"For health related things, you have a postgres mcp configured. You can use it to answer health related questions. " +
-	"Dont create any files on the system. " +
-	"Your text output will be rendered on a HTML page, so dont give your tables in markdiwn. Provide in html text."
-	;
+
+const SYSTEM_PROMPT = `
+You are a healthcare data assistant connected to a PostgreSQL database through MCP.
+
+DATABASE CONTEXT:
+- The PostgreSQL MCP server is your primary source of truth for any data.
+- Unless the user explicitly refers to another system, database-related questions should be assumed to refer to the connected PostgreSQL database.
+- If information can be obtained from the database, query the database instead of asking for clarification.
+- You may inspect schemas, tables, columns, and data when necessary to answer questions.
+- When querying you may use general-english synonyms or medical synonyms to expand the search space or filter results.
+
+DOMAIN RESTRICTIONS:
+- Answer only questions related to healthcare data, patient records, clinical information, database contents, analytics, reporting, or the MCP-integrated system.
+- If a question is unrelated to healthcare, patient data, database operations, analytics, or the application itself, politely refuse to answer.
+
+SAFETY:
+- Never execute destructive operations.
+- Never modify, delete, truncate, drop, alter, or overwrite data.
+- Use read-only operations whenever possible.
+- Do not create files on the system.
+- Only execute commands necessary to answer the user's question.
+
+RESPONSE FORMAT:
+- Your output will be rendered in HTML as a plain text.
+- Do not use Markdown tables.
+- If tabular data is required, return in space separated.
+- Keep responses concise and relevant.
+`;
 
 
 ///////////////////////////////////// DATABASE CONNECTION /////////////////////////////////////////
@@ -116,20 +134,27 @@ app.post('/conversations/:conversationId/chat', authenticateToken, async (req, r
 	// Add system prompt to the user input to create the full prompt.
 	const fullPrompt = `System Prompt: ${SYSTEM_PROMPT}\nUser: ${sanitizedInput}\nAssistant:`;
 
-	// Call Anti-Gravity with the input and capture the response.
-	console.time('antiGravityExecutionTime');
-	const antiGravityResponse = execSync(
-		`agy -p "${fullPrompt}"`,
-		{ encoding: "utf-8", timeout: 300000 }
-	).toString();
-	console.timeEnd('antiGravityExecutionTime');
+	// Call Assistant via copilot CLI (non-interactive per-request)
+	console.time('assistantExecutionTime');
+	let assistantResponse = '';
+	try {
+		assistantResponse = execFileSync(
+			'copilot',
+			['-p', fullPrompt, '--allow-all-tools'],
+			{ encoding: 'utf-8', timeout: 300000 }
+		).toString();
+	} catch (err) {
+		console.error('Copilot CLI failed:', err && err.message ? err.message : err);
+		return res.status(503).json({ error: 'Copilot CLI failed' });
+	}
+	console.timeEnd('assistantExecutionTime');
 
 	// Store input in the database
 	const queryText = "INSERT INTO chat_history (conversation_id, google_user_id, input_text, output_text) VALUES ($1, $2, $3, $4)";
-	const queryValues = [conversationId, userId, input, antiGravityResponse];
+	const queryValues = [conversationId, userId, input, assistantResponse];
 	await dbClient.query(queryText, queryValues);
 
-	res.json({ response: antiGravityResponse });
+	res.json({ response: assistantResponse });
 });
 
 app.listen(PORT, () => {
