@@ -17,7 +17,9 @@ const SYSTEM_PROMPT =
 	"Only execute commands that are necessary to answer the user's question. " +
 	"Always prioritize the safety and security of the system. " +
 	"If a command is potentially harmful, do not execute it and instead " +
-	"provide a safe response to the user.";
+	"provide a safe response to the user." + 
+	"Your output will be rendered on a HTML page, so give your response accordingly."
+	;
 
 
 ///////////////////////////////////// DATABASE CONNECTION /////////////////////////////////////////
@@ -33,10 +35,39 @@ const pgClientConfiguration = {
 const dbClient = new Client(pgClientConfiguration);
 dbClient.connect();
 
+function authenticateToken(req, res, next) {
+	const authHeader = req.headers.authorization;
+	const token = authHeader && authHeader.split(' ')[1];
+
+	if (!token) {
+		return res.status(401).json({ error: 'Access token required' });
+	}
+
+	try {
+		const payloadPart = token.split('.')[1];
+		if (!payloadPart) {
+			return res.status(403).json({ error: 'Invalid token format' });
+		}
+		const base64 = payloadPart.replace(/-/g, '+').replace(/_/g, '/');
+		const payload = JSON.parse(Buffer.from(base64, 'base64').toString('utf-8'));
+		
+		if (!payload.email) {
+			return res.status(403).json({ error: 'Token missing email' });
+		}
+		
+		req.user = payload;
+		next();
+	} catch (err) {
+		console.error("Token authentication failed:", err);
+		return res.status(403).json({ error: 'Invalid or expired token' });
+	}
+}
+
 /////////////////////////////////////////// API ///////////////////////////////////////////////////
 
-app.get('/conversations', async (req, res) => {
-	const userId = "leeza";
+app.get('/conversations', authenticateToken, async (req, res) => {
+	const userId = req.user.email;
+	console.log(`Fetching conversations for user: ${userId}`);
 
 	const result = await dbClient.query(
 		`
@@ -54,8 +85,9 @@ app.get('/conversations', async (req, res) => {
 	res.json(result.rows);
 });
 
-app.get('/conversations/:conversationId/', async (req, res) => {
+app.get('/conversations/:conversationId/', authenticateToken, async (req, res) => {
 	const { conversationId } = req.params;
+	console.log(`Fetching chat history for conversation: ${conversationId}`);
 
 	const result = await dbClient.query(
 		`
@@ -70,10 +102,10 @@ app.get('/conversations/:conversationId/', async (req, res) => {
 	res.json(result.rows);
 });
 
-app.post('/conversations/:conversationId/chat', async (req, res) => {
+app.post('/conversations/:conversationId/chat', authenticateToken, async (req, res) => {
 	const { input } = req.body;
 	const { conversationId } = req.params;
-	const userId = "leeza";
+	const userId = req.user.email;
 	console.log(`Executing chat for input:${input}`);
 
 	// sanitize input, replace double quotes with single quotes
