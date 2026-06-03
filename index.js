@@ -70,9 +70,9 @@ app.get('/conversations/:conversationId/', async (req, res) => {
 	res.json(result.rows);
 });
 
-app.post('/conversations/:id/chat', async (req, res) => {
+app.post('/conversations/:conversationId/chat', async (req, res) => {
 	const { input } = req.body;
-	const conversationId = "ef7fc115-90f8-4f4f-940d-24fb77bd62cf";
+	const { conversationId } = req.params;
 	const userId = "leeza";
 	console.log(`Executing chat for input:${input}`);
 
