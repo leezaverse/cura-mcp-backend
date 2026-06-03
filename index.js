@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import pg from 'pg';
 import { execSync } from 'child_process';
+import dotenv from 'dotenv';
 
 const { Client } = pg;
 const PORT = 3000;
@@ -9,6 +10,7 @@ const PORT = 3000;
 const app = express();
 app.use(express.json());
 app.use(cors());
+dotenv.config();
 
 const SYSTEM_PROMPT =
 	"Do not execute any commands that could cause harm to the system. " +
@@ -33,10 +35,20 @@ dbClient.connect();
 
 /////////////////////////////////////////// API /////////////////////////////////////////////////////////////
 
+app.get('/conversations/:conversationId/', async (req, res) => {
+	const { conversationId } = req.params;
+
+	const queryText = "SELECT input_text, output_text FROM chat_history WHERE conversation_id = $1 ORDER BY created_at ASC";
+	const queryValues = [conversationId];
+		const result = await dbClient.query(queryText, queryValues);
+	
+	res.json(result.rows);
+});
+
 app.post('/conversations/:id/chat', async (req, res) => {
 	const { input } = req.body;
-	const dbConversationId = "ef7fc115-90f8-4f4f-940d-24fb77bd62cf";
-	const dbGoogleUserId = "leeza";
+	const conversationId = "ef7fc115-90f8-4f4f-940d-24fb77bd62cf";
+	const userId = "leeza";
 	console.log(`Executing chat for input:${input}`);
 
 	// sanitize input, replace double quotes with single quotes
@@ -53,7 +65,7 @@ app.post('/conversations/:id/chat', async (req, res) => {
 
 	// Store input in the database
 	const queryText = "INSERT INTO chat_history (conversation_id, google_user_id, input_text, output_text) VALUES ($1, $2, $3, $4)";
-	const queryValues = [dbConversationId, dbGoogleUserId, input, antiGravityResponse];
+	const queryValues = [conversationId, userId, input, antiGravityResponse];
 	await dbClient.query(queryText, queryValues);
 
 	res.json({ response: antiGravityResponse });
