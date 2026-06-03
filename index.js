@@ -20,7 +20,7 @@ const SYSTEM_PROMPT =
 	"provide a safe response to the user.";
 
 
-///////////////////////////////////// DATABASE CONNECTION ////////////////////////////////////////////////////
+///////////////////////////////////// DATABASE CONNECTION /////////////////////////////////////////
 
 const pgClientConfiguration = {
 	user: process.env.DB_USER,
@@ -33,15 +33,40 @@ const pgClientConfiguration = {
 const dbClient = new Client(pgClientConfiguration);
 dbClient.connect();
 
-/////////////////////////////////////////// API /////////////////////////////////////////////////////////////
+/////////////////////////////////////////// API ///////////////////////////////////////////////////
+
+app.get('/conversations', async (req, res) => {
+	const userId = "leeza";
+
+	const result = await dbClient.query(
+		`
+		SELECT
+			conversation_id,
+			MAX(created_at) AS last_message_time
+		FROM chat_history
+		WHERE google_user_id = $1
+		GROUP BY conversation_id
+		ORDER BY last_message_time DESC
+		`,
+		[userId]
+	);
+
+	res.json(result.rows);
+});
 
 app.get('/conversations/:conversationId/', async (req, res) => {
 	const { conversationId } = req.params;
 
-	const queryText = "SELECT input_text, output_text FROM chat_history WHERE conversation_id = $1 ORDER BY created_at ASC";
-	const queryValues = [conversationId];
-		const result = await dbClient.query(queryText, queryValues);
-	
+	const result = await dbClient.query(
+		`
+		SELECT input_text, output_text, created_at
+		FROM chat_history
+		WHERE conversation_id = $1
+		ORDER BY created_at ASC
+		`,
+		[conversationId]
+	);
+
 	res.json(result.rows);
 });
 
