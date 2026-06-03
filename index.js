@@ -18,7 +18,9 @@ const SYSTEM_PROMPT =
 	"Always prioritize the safety and security of the system. " +
 	"If a command is potentially harmful, do not execute it and instead " +
 	"provide a safe response to the user." + 
-	"Your output will be rendered on a HTML page, so give your response accordingly."
+	"For health related things, you have a postgres mcp configured. You can use it to answer health related questions. " +
+	"Dont create any files on the system. " +
+	"Your text output will be rendered on a HTML page, so dont give your tables in markdiwn. Provide in html text."
 	;
 
 
@@ -115,10 +117,12 @@ app.post('/conversations/:conversationId/chat', authenticateToken, async (req, r
 	const fullPrompt = `System Prompt: ${SYSTEM_PROMPT}\nUser: ${sanitizedInput}\nAssistant:`;
 
 	// Call Anti-Gravity with the input and capture the response.
+	console.time('antiGravityExecutionTime');
 	const antiGravityResponse = execSync(
 		`agy -p "${fullPrompt}"`,
-		{ encoding: "utf-8", timeout: 90000 }
+		{ encoding: "utf-8", timeout: 300000 }
 	).toString();
+	console.timeEnd('antiGravityExecutionTime');
 
 	// Store input in the database
 	const queryText = "INSERT INTO chat_history (conversation_id, google_user_id, input_text, output_text) VALUES ($1, $2, $3, $4)";
